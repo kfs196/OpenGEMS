@@ -125,8 +125,8 @@ class PlotlyMapBuilder:
             y=sample_yy[valid],
             u=sample_u[valid],
             v=sample_v[valid],
-            scale=0.18,
-            arrow_scale=0.3,
+            scale=2,
+            arrow_scale=0.4,
             line_width=1.1,
             name="Direction",
         )
@@ -217,7 +217,8 @@ class MatplotlibMapBuilder:
             unit_vy[::arrow_step, ::arrow_step],
             color="black",
             pivot="middle",
-            scale=22,
+            angles="xy", # Use data coordinates for vector direction
+            scale=20,
             width=0.003,
         )
 

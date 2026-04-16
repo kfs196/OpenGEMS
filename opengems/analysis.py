@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import numpy as np
-from scipy.interpolate import griddata
+from scipy.interpolate import RectBivariateSpline
+from scipy.ndimage import gaussian_filter
 
 from opengems.models import ActivationData, GridConfig, InterpolatedField, VelocityField
 
@@ -29,25 +30,29 @@ class IsochronalInterpolator:
         Returns:
             A dense interpolated activation-time field.
         """
-        base_x, base_y = np.meshgrid(grid_config.x_coords, grid_config.y_coords)
 
-        valid_points = activation_data.valid_mask
-        points = np.column_stack((base_x[valid_points], base_y[valid_points]))
-        values = activation_data.padded_matrix[valid_points]
+        valid_mask = activation_data.valid_mask
+        valid_rows = np.where(valid_mask.any(axis=1))[0] # Find the valid rectangular region.
+        valid_cols = np.where(valid_mask.any(axis=0))[0]
+        if len(valid_rows) == 0 or len(valid_cols) == 0:
+            raise ValueError("No valid activation data are available for interpolation.")
+        
+        row_start, row_end = valid_rows[0], valid_rows[-1] + 1
+        col_start, col_end = valid_cols[0], valid_cols[-1] + 1
+        sub_values = activation_data.padded_matrix[row_start:row_end, col_start:col_end]
+        sub_y = grid_config.y_coords[row_start:row_end]
+        sub_x = grid_config.x_coords[col_start:col_end]
 
-        dense_w = max(grid_config.num_w * 20, self.min_dense_points)
-        dense_h = max(grid_config.num_h * 20, self.min_dense_points)
+        kx = min(3, len(sub_x) - 1) # Use cubic spline when enough samples are available.
+        ky = min(3, len(sub_y) - 1) # Fall back to quadratic or linear when the valid region is small.
 
-        dense_x = np.linspace(grid_config.x_coords.min(), grid_config.x_coords.max(), dense_w)
-        dense_y = np.linspace(grid_config.y_coords.min(), grid_config.y_coords.max(), dense_h)
-        dense_xx, dense_yy = np.meshgrid(dense_x, dense_y)
+        dense_w = max(len(sub_x) * 20, self.min_dense_points)
+        dense_h = max(len(sub_y) * 20, self.min_dense_points)
+        dense_x = np.linspace(sub_x.min(), sub_x.max(), dense_w)
+        dense_y = np.linspace(sub_y.min(), sub_y.max(), dense_h)
 
-        # First use linear interpolation for a smooth surface.
-        linear_surface = griddata(points, values, (dense_xx, dense_yy), method="linear")
-
-        # Then fill any edge NaNs with nearest-neighbor interpolation.
-        nearest_surface = griddata(points, values, (dense_xx, dense_yy), method="nearest")
-        surface = np.where(np.isnan(linear_surface), nearest_surface, linear_surface)
+        spline = RectBivariateSpline(sub_y, sub_x, sub_values, ky=ky, kx=kx)
+        surface = spline(dense_y, dense_x)
 
         return InterpolatedField(
             x_coords=dense_x,
@@ -78,7 +83,8 @@ class VelocityFieldCalculator:
         )
 
         grad_sq = dT_dx**2 + dT_dy**2
-        grad_sq[grad_sq < 1e-12] = np.nan
+        threshold = np.percentile(grad_sq[~np.isnan(grad_sq)], 0.5) # Calculate the 0.5th percentile in the array as the threshold 
+        grad_sq[grad_sq < threshold] = np.nan
 
         vx = dT_dx / grad_sq
         vy = dT_dy / grad_sq
