@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
-from tkinter import filedialog, Tk
 
 from controller import OpenGEMSController, FEVTController
 from opengems.models import GridConfig
@@ -229,7 +228,7 @@ class OpenGEMSApp:
         st.header("Analysis Results of Module I :star:")
         st.subheader("Detection Signal Transform Outcomes")
         act_times = pd.DataFrame(results['activation_times'], columns=['Activation Times (s)'])
-        st.dataframe(act_times, width=350)
+        st.dataframe(act_times, width=300)
 
         st.subheader("Illustration of signal processing")
         plotly_config = {
